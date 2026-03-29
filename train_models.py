@@ -50,3 +50,42 @@ print(classification_report(y_test, y_pred))
 joblib.dump(ensemble, 'models/ensemble_model.pkl')
 joblib.dump(tfidf, 'models/tfidf_vectorizer.pkl')
 print("✅ บันทึก Ensemble model แล้ว")
+
+# ต่อจาก train_models.py
+from transformers import pipeline, AutoTokenizer, AutoModelForSequenceClassification
+import torch
+import json
+
+print("กำลังโหลด BERT Pretrained Model...")
+
+# ใช้โมเดล distilbert ที่เล็กกว่า BERT ปกติ แต่แม่นพอกัน
+# sentiment-analysis pipeline จะโหลดโมเดลที่ถูก fine-tune มาแล้ว
+bert_pipeline = pipeline(
+    "sentiment-analysis",
+    model="distilbert-base-uncased-finetuned-sst-2-english",
+    truncation=True,    # ตัดข้อความที่ยาวเกินไปอัตโนมัติ
+    max_length=512      # BERT รับข้อความได้สูงสุด 512 tokens
+)
+
+# ทดสอบกับ test set (ใช้แค่ 500 ตัวอย่างเพื่อประหยัดเวลา)
+print("กำลังทดสอบ BERT...")
+sample_texts = X_test[:500].tolist()
+sample_labels = y_test[:500].tolist()
+
+# ทำนายทีละ batch เพื่อไม่ให้ RAM เต็ม
+bert_preds = []
+for i in range(0, len(sample_texts), 32):  # ทีละ 32 ข้อความ
+    batch = sample_texts[i:i+32]
+    results = bert_pipeline(batch)
+    # แปลง POSITIVE=1, NEGATIVE=0
+    preds = [1 if r['label'] == 'POSITIVE' else 0 for r in results]
+    bert_preds.extend(preds)
+
+bert_acc = accuracy_score(sample_labels, bert_preds)
+print(f"BERT Accuracy: {bert_acc:.4f}")
+
+# บันทึก accuracy ไว้แสดงในเว็บ
+with open('models/bert_metrics.json', 'w') as f:
+    json.dump({'accuracy': bert_acc}, f)
+
+print("✅ BERT พร้อมใช้งานแล้ว (ไม่ต้อง save เพราะ load จาก HuggingFace ได้เลย)")
